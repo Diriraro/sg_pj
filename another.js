@@ -1,8 +1,8 @@
 // Node.js의 readline, axios, axios-cookiejar-support, tough-cookie, cheerio, form-data, xlsx 모듈을 불러옵니다.
 const readline = require('readline');
 const axios = require('axios');
-const axiosCookieJarSupport = require('axios-cookiejar-support').default;
 const tough = require('tough-cookie');
+const axiosCookieJarSupport = require('axios-cookiejar-support').default;
 const cheerio = require('cheerio');
 const FormData = require('form-data');
 const XLSX = require('xlsx');
@@ -86,40 +86,77 @@ function saveToExcel(data, fileName) {
   XLSX.writeFile(wb, fileName);
 }
 
+function checkBody(body) {
+
+  if(body.srcType == "0"){
+    body.srcType = "RMON";
+  } else if (body.srcType == "1") {
+    body.srcType = "WMON";
+  } else {
+    return false;
+  }
+  if(body.stDate.length != 10 || body.edDate.length != 10) {
+    return false;
+  }
+  return body;
+}
+
 // 메인 함수: url에 대해 GET 요청과 POST 요청을 보내고, 그 결과를 파싱하고, 엑셀 파일로 저장합니다.
 (async function main() {
-  const url1 = "https://example1.com";
-  const url2 = "https://example2.com";
+  const baseURL = "https://prm.iniwedding.com";
   const url3 = "https://example3.com";
 
-  const customHeaders = {
-    'User-Agent': 'My-Custom-User-Agent',
-    'X-Custom-Header': 'CustomHeaderValue'
+  const customHeadersGet = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Origin': 'https://prm.iniwedding.com'
   };
 
-  const body = {
-    body1: await promptInput("Body1 값을 입력하세요: "),
-    body2: await promptInput("Body2 값을 입력하세요: "),
-    body3: await promptInput("Body3 값을 입력하세요: "),
+  const customHeadersPost = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Origin': 'https://prm.iniwedding.com',
+    'Content-Type': 'application/x-www-form-urlencoded'
   };
 
-  const data1 = await fetchDataGET(url1, customHeaders);
-  if(data1) {
-    const parsedData1 = parseData(data1);
-    saveToExcel(parsedData1, 'output1.xlsx');
+  let body = {
+    srcType: await promptInput("리허설 검색은 0, 예식일 검색은 1 중 하나를 입력하세요: "),
+    stDate: await promptInput("검색 시작할 날짜를 yyyy-MM-dd 형식으로 입력하세요: "),
+    edDate: await promptInput("검색 끝낼 날짜를 yyyy-MM-dd 형식으로 입력하세요: ")
+  };
+  
+  body = checkBody(body);
+  
+  if (!body){
+    rl.question("잘못된 값이 입력되어 프로그램이 종료됩니다. 아무키나 누르세요.", () => {
+      rl.close();
+      process.exit();
+    });
   }
 
-  const data2 = await fetchDataPOST(url2, body, customHeaders);
-  if(data2) {
-    const parsedData2 = parseData(data2);
-    saveToExcel(parsedData2, 'output2.xlsx');
-  }
+  const data1 = await fetchDataGET(baseURL, customHeadersGet);
+  // if(data1) {
+  //   const parsedData1 = parseData(data1);
+  //   saveToExcel(parsedData1, 'output1.xlsx');
+  // }
+  console.log(data1);
+  console.log(cookieJar);
+  const loginBody = {
+    mb_id: "bus151a00009",
+    mb_password: "xkdla"
+  } 
+  const data2 = await fetchDataPOST(baseURL + "/bbs/login_check.php?", loginBody, customHeadersPost);
+  console.log(data2);
+  // if(data2) {
+  //   const parsedData2 = parseData(data2);
+  //   saveToExcel(parsedData2, 'output2.xlsx');
+  // }
 
-  const data3 = await fetchDataGET(url3, customHeaders);
-  if(data3) {
-    const parsedData3 = parseData(data3);
-    saveToExcel(parsedData3, 'output3.xlsx');
-  }
+  // const data3 = await fetchDataGET(url3, customHeaders);
+  // if(data3) {
+  //   const parsedData3 = parseData(data3);
+  //   saveToExcel(parsedData3, 'output3.xlsx');
+  // }
 
   rl.question("키를 입력하면 프로그램이 종료됩니다.", () => {
     rl.close();
