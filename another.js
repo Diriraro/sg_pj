@@ -27,6 +27,78 @@ function promptInput(question) {
   });
 }
 
+async function httpConnect(actionId, method, url, bodyText, retryCount = 0) {
+    var resultData = "";
+    var fullUrl = url.indexOf("://") >= 0 ? url : this.hostURL + url;
+  
+    try {
+      for (var i = 0; i <= retryCount; i++) {
+        console.error(`[${i + 1}] 번째 실행 : ${fullUrl}`);
+  
+        this.userErrorMessage = "";
+  
+        const config = {
+          url: fullUrl,
+          method: method,
+          jar: cookieJar,
+          withCredentials: true,
+        };
+
+        const customHeadersGet = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Origin': 'https://prm.iniwedding.com'
+        };
+    
+        const customHeadersPost = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Origin': 'https://prm.iniwedding.com',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        };
+  
+        if (method.toLowerCase() === 'post' && bodyText) {
+          config.data = bodyText;
+          config.header = customHeadersPost;
+        } else {
+            config.header = customHeadersGet;
+        }
+  
+        try {
+          const response = await axios(config);
+  
+          if (response.status === 200) {
+            this.setCookieString(response.headers['set-cookie']);
+            resultData = response.data;
+          } else if (response.status === 302 && response.headers.location) {
+            return await this.httpConnect(`${actionId}_3`, "GET", response.headers.location, "", 2);
+          } else {
+            this.userError = `${actionId}_1::${response.status}`;
+            return false;
+          }
+        } catch (error) {
+          if (i < retryCount) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
+          this.userError = `${actionId}_2::${error.response.status}`;
+          return false;
+        }
+  
+        if (!resultData) {
+          resultData = Buffer.from(response.data).toString('hex');
+        }
+  
+        break;
+      }
+    } catch (error) {
+      console.error(`[${actionId}] 실패 - 재시도 횟수 초과`);
+      throw error;
+    }
+  
+    return resultData;
+  }
+
 // 주어진 url에 POST 요청을 보내, 응답을 받아옵니다. 요청 본문은 body 객체를 form data 형식으로 변환해 전달하며,
 // 요청 헤더는 headers 객체를 사용합니다.
 async function fetchDataPOST(url, body, headers) {
@@ -134,7 +206,7 @@ function checkBody(body) {
     });
   }
 
-  const data1 = await fetchDataGET(baseURL, customHeadersGet);
+  const data1 = await httpConnect('main', 'GET',baseURL,'');
   // if(data1) {
   //   const parsedData1 = parseData(data1);
   //   saveToExcel(parsedData1, 'output1.xlsx');
@@ -145,8 +217,10 @@ function checkBody(body) {
     mb_id: "bus151a00009",
     mb_password: "xkdla"
   } 
-  const data2 = await fetchDataPOST(baseURL + "/bbs/login_check.php?", loginBody, customHeadersPost);
-  console.log(data2);
+//   const data2 = await fetchDataPOST(baseURL + "/bbs/login_check.php?", loginBody, customHeadersPost);
+//   console.log(data2);
+
+
   // if(data2) {
   //   const parsedData2 = parseData(data2);
   //   saveToExcel(parsedData2, 'output2.xlsx');
