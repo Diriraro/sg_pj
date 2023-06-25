@@ -9,7 +9,8 @@ const XLSX = require('xlsx');
 const credentials = require('./credentials.js');
 require("./String.js");
 
-let tempData;
+let tempData = {};
+tempData.message = "";
 
 // axios에 cookie jar 기능을 추가해줍니다.
 axiosCookieJarSupport(axios);
@@ -39,9 +40,7 @@ async function httpConnect(actionId, method, url, bodyText, retryCount = 0) {
 
     try {
       for (var i = 0; i <= retryCount; i++) {
-        console.error(`[${i + 1}] 번째 실행 : ${url}`);
-  
-        this.userErrorMessage = "";
+        console.error(`${actionId}:: [${i + 1}] 번째 실행 : ${url}`);
   
         const config = {
           url: url,
@@ -155,9 +154,19 @@ function checkBody(body) {
   } else {
     return false;
   }
-  if(body.stDate.length != 10 || body.edDate.length != 10) {
+
+  if (body.stDate.length == 0 || body.edDate.length == 0) {
+    console.log('날짜가 입력되지 않음');
+    const now = new Date();
+    const stDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7).toISOString().slice(0,10);
+    const edDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0,10);
+    console.log(`시작날짜 ::${stDate} / 종료날짜 ::${edDate}로 검색`);
+    body.stDate = stDate;
+    body.edDate = edDate;
+  }else if(body.stDate.length != 10 || body.edDate.length != 10) {
+    console.log('시작날짜/끝낼날짜가 빈값, 또는 10자리의 값이 아닙니다. 에러발생.')
     return false;
-  }
+  } 
   return body;
 }
 
@@ -166,12 +175,12 @@ function checkBody(body) {
   const baseURL = "https://prm.iniwedding.com";
 
   let body = {
-    srcType: await promptInput("리허설 검색은 0, 예식일 검색은 1 중 하나를 입력하세요: "),
+    srcType: await promptInput("리허설(촬영용) 검색은 0, 예식일 검색은 1 중 하나를 입력하세요: "),
     stDate: await promptInput("검색 시작할 날짜를 yyyy-MM-dd 형식으로 입력하세요: "),
     edDate: await promptInput("검색 끝낼 날짜를 yyyy-MM-dd 형식으로 입력하세요: ")
   };
   
-  // body = checkBody(body);
+  body = checkBody(body);
   
   if (!body){
     rl.question("잘못된 값이 입력되어 프로그램이 종료됩니다. 아무키나 누르세요.", () => {
@@ -209,6 +218,87 @@ function checkBody(body) {
     errorCatch(tempData);
   }
 
+  let isPagingEnd = false;
+  let paging = 1;
+  let codeArr = [];
+  let parsingArr = [];
+  while(true) {
+    let postOrderBody = "";
+    postOrderBody += "button_flag="
+    postOrderBody += "&sort=CP_PlacingDateTime"
+    postOrderBody += "&pages=" + paging;
+    postOrderBody += "&ContractPlacing_Code="
+    postOrderBody += "&OrderType=O"
+    postOrderBody += "&dateFrmName="
+    postOrderBody += "&idxno="
+    postOrderBody += "&ContractName="
+    postOrderBody += "&ShContractPlacing_Code="
+    postOrderBody += "&CP_GoodName="
+    postOrderBody += "&SearchMon=" + body.srcType;
+    postOrderBody += "&SDAY=" + body.stDate;
+    postOrderBody += "&EDAY=" + body.edDate;
+
+    resultData = await httpConnect(`Order2_${paging}`, 'POST', baseURL + "/Order/OrderList.php", postOrderBody);
+    if (resultData === false) errorCatch(tempData);
+    chkPage = resultData.grap('<title>', '</title>');
+    if(chkPage != '발주현황') {
+      tempData.message = '발주현황페이지 진입실패';
+      errorCatch(tempData);
+    }
+    let isData = resultData.grap(`<tr class='ConteTR' style="height:32px;">`, '</tr>');
+    if (isData == "" || !isData) break;
+
+    let trCnt = 0;
+    while(true) {
+      let trData = resultData.grap(`<tr class='ConteTR' style="height:32px;">`, '</tr>', trCnt);
+      
+      if(trCnt == 0 && (trData == "" || !trData)){
+        isPagingEnd = true;
+        break;
+      } 
+
+      let chkIsOk = trData.grap("<td class='ConteTD_End_C'>", '</td>').removeHtmlTagAll().trim();
+      if (chkIsOk == "확인") {
+        isPagingEnd = true;
+        break;
+      }
+
+      let dataCd = trData.grap("<td class='ConteTD_C'>", '</td>', 1);
+      codeArr.push(dataCd);
+      trCnt++;
+    }
+
+    if(isPagingEnd) break;
+    paging++;
+  }
+
+  for (let cnt = 0; cnt < codeArr.length; cnt++) {
+    let itemCd = codeArr[cnt];
+    let postOrderBody = "";
+    postOrderBody += "button_flag="
+    postOrderBody += "&sort=CP_PlacingDateTime"
+    postOrderBody += "&pages=1";
+    postOrderBody += "&ContractPlacing_Code=" + itemCd
+    postOrderBody += "&OrderType=O"
+    postOrderBody += "&dateFrmName="
+    postOrderBody += "&idxno="
+    postOrderBody += "&ContractName="
+    postOrderBody += "&ShContractPlacing_Code="
+    postOrderBody += "&CP_GoodName="
+    postOrderBody += "&SearchMon=" + body.srcType;
+    postOrderBody += "&SDAY=" + body.stDate;
+    postOrderBody += "&EDAY=" + body.edDate;
+
+    resultData = await httpConnect(`Contract_${cnt}`, 'POST', baseURL + "/Order/ContractOptionFax_Fixed.php", postOrderBody);
+    if (resultData === false) errorCatch(tempData);
+    if(resultData.replaceEntities().indexOf('발   주   서') == -1) {
+      tempData.message = '발주서 진입 실패';
+      errorCatch(tempData);
+    }
+
+    parsingArr.push(resultData.replaceEntities());
+  }
+
   /**
    * 1. 발주현황 입력값 추가 > post통신
    *  1-1. 입력받은 데이터 체크 > 해당 값으로 검색
@@ -216,6 +306,7 @@ function checkBody(body) {
    *  2-1. 각 td 마다 전부 '발주서 인쇄' 통신으로 추가 데이터 수집 필요
    *  2-2. 수집 하다가 마지막 td가 '확인' 일 경우 반복 중지
    *  2-3. 다음 페이지 table이 없을경우 반복 중지
+   * -- OK
    * 3. 가져온 데이터 파싱
    * 3-1. 입력값에 따라 다른 값 파싱 필요
    * 4. 엑셀파일 생성

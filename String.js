@@ -1,10 +1,5 @@
 /** 
  * String.prototype.js
- * String.prototype.js
- *
- * @author 	: htjulia
- * @date 	: 2015-04-14 17:30:11.864
- * @version : 1.0.0
  */
  
 /**
