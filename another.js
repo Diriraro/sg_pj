@@ -4,7 +4,6 @@ const axios = require('axios');
 const tough = require('tough-cookie');
 const axiosCookieJarSupport = require('axios-cookiejar-support').default;
 const cheerio = require('cheerio');
-const FormData = require('form-data');
 const XLSX = require('xlsx');
 const credentials = require('./credentials.js');
 require("./String.js");
@@ -35,8 +34,6 @@ function promptInput(question) {
 async function httpConnect(actionId, method, url, bodyText, retryCount = 0) {
     var resultData = "";
     let response; 
-    // var fullUrl = url.indexOf("://") >= 0 ? url : this.hostURL + url;
-    // console.log(url);
 
     try {
       for (var i = 0; i <= retryCount; i++) {
@@ -108,24 +105,93 @@ async function httpConnect(actionId, method, url, bodyText, retryCount = 0) {
   }
 
 // HTML 문자열을 파싱해 원하는 데이터를 추출하는 함수입니다. 원하는 데이터의 형태에 따라 이 함수를 수정해야 합니다.
-function parseData(html) {
-  const $ = cheerio.load(html);
+function parseData(codeArr, htmlArr, srcType) {
+  const dataCnt = codeArr.length;
   const parsedData = [];
+  if (srcType == "RMON") {
+    for (let cnt = 0; cnt < dataCnt; cnt++) {
+      let htmlItem = htmlArr[cnt];
+      let codeItem = codeArr[cnt];
+      let resultJson = {};
+  
+      resultJson["발주코드"] = codeItem.contCd;
+  
+      const $ = cheerio.load(htmlItem);
+      const tempDate = $('body > div:nth-child(1) > table:nth-child(3) > tbody > tr:nth-child(2) > td.tdLine').text().split(' ');
+      const ckDate = new Date(tempDate[0]);
+      resultJson["날짜"] = ('0' + (ckDate.getMonth() + 1)).slice(-2) + "-" + ('0' + ckDate.getDate()).slice(-2);
+      resultJson["담당플래너"] = $('body > div:nth-child(1) > table:nth-child(2) > tbody > tr:nth-child(1) > td.tdEndLine').text().split('/')[0].trim();
+      resultJson["신부명"] = $('body > div:nth-child(1) > table:nth-child(2) > tbody > tr:nth-child(2) > td:nth-child(2)').text();
+  
+      resultJson["배송지"] = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(2)').text();
+      const isTotal = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(3)').text();
+      if (isTotal.indexOf('토탈') == -1) {
+        resultJson["배송지"] += "(확인필요)";
+      }
+      
+      resultJson["발주부케"] = "[촬영] " + codeItem.price + "원 - " + $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(2) > td:nth-child(3)').text();
+      resultJson["특이사항(기타사항)"] = $('body > div:nth-child(1) > table:nth-child(5) > tbody > tr > td').text().trim();
+      resultJson["리허설장소"] = $('body > div:nth-child(1) > table:nth-child(3) > tbody > tr:nth-child(1) > td.tdLine').text();
+      resultJson["리허설시간"] = tempDate[1];
+  
+      parsedData.push(resultJson);
+    }
+  } else {
+    for (let cnt = 0; cnt < dataCnt; cnt++) {
+      let htmlItem = htmlArr[cnt];
+      let codeItem = codeArr[cnt];
+      let resultJson = {};
+  
+      resultJson["발주코드"] = codeItem.contCd;
+    
+      const $ = cheerio.load(htmlItem);
+      resultJson["담당플래너"] = $('body > div:nth-child(1) > table:nth-child(2) > tbody > tr:nth-child(1) > td.tdEndLine').text().split('/')[0].trim();
+      resultJson["신부명"] = $('body > div:nth-child(1) > table:nth-child(2) > tbody > tr:nth-child(2) > td:nth-child(2)').text();
+      resultJson["배송지"] = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(2)').text();
+      const isTotal = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(3)').text();
+      if (isTotal.indexOf('토탈') == -1) {
+        resultJson["배송지"] += "(확인필요)";
+      }
+      resultJson["발주부케"] = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(2) > td:nth-child(3)').text() + " - " + codeItem.price + "원";
+      resultJson["특이사항(기타사항)"] = $('body > div:nth-child(1) > table:nth-child(5) > tbody > tr > td').text().trim();
+      resultJson["예식장소"] = $('body > div:nth-child(1) > table:nth-child(3) > tbody > tr:nth-child(1) > td.tdEndLine').text().trim();
+      resultJson["예식시간"] = $('body > div:nth-child(1) > table:nth-child(3) > tbody > tr:nth-child(2) > td.tdEndLine').text().split(' ')[1].trim();
 
-  // Modify this part to match the structure of the data you are trying to extract
-  // 원하는 데이터 추출(여기는 추출 코드를 추가하셔야 합니다.)
-  // 예: $('div.className').each((index, element) => {
-  //   parsedData.push($(element).text().trim());
-  // });
-
+      parsedData.push(resultJson);
+    }
+  }
 
   return parsedData;
 }
 
 // 데이터를 엑셀 파일로 저장하는 함수입니다.
-function saveToExcel(data, fileName) {
+function saveToExcel(data, fileName, srcType) {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(data);
+  if(srcType == "RMON") {
+    ws['!cols'] = [
+      { wch: 15 },
+      { wch: 5 }, 
+      { wch: 10 }, 
+      { wch: 10 }, 
+      { wch: 25 }, 
+      { wch: 45 }, 
+      { wch: 50 }, 
+      { wch: 20 }, 
+      { wch: 10 }, 
+    ];
+  } else {
+    ws['!cols'] = [
+      { wch: 15 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 25 },
+      { wch: 45 },
+      { wch: 50 },
+      { wch: 15 },
+      { wch: 5 },
+    ];
+  }
   XLSX.utils.book_append_sheet(wb, ws, "Sheet 1");
   XLSX.writeFile(wb, fileName);
 }
@@ -134,16 +200,14 @@ function logOut(){
   httpConnect('MAINPAGE', 'GET', 'https://prm.iniwedding.com/bbs/logout.php','');
 }
 
-function errorCatch(err){
+async function errorCatch(err){
 
   console.log('=======================================')
   console.log(err.message)
   console.log('=======================================')
   
-  rl.question("에러발생. 프로그램이 종료됩니다. 아무키나 누르세요.", () => {
-    rl.close();
-    process.exit();
-  });
+  await promptInput("에러발생. 프로그램이 종료됩니다. 아무키나 누르세요.");
+  process.exit();
 }
 
 function checkBody(body) {
@@ -158,9 +222,9 @@ function checkBody(body) {
   if (body.stDate.length == 0 || body.edDate.length == 0) {
     console.log('날짜가 입력되지 않음');
     const now = new Date();
-    const stDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7).toISOString().slice(0,10);
-    const edDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().slice(0,10);
-    console.log(`시작날짜 ::${stDate} / 종료날짜 ::${edDate}로 검색`);
+    const stDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).toISOString().slice(0,10);
+    const edDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString().slice(0,10);
+    console.log(`시작날짜::${stDate} / 종료날짜::${edDate} 로 검색`);
     body.stDate = stDate;
     body.edDate = edDate;
   }else if(body.stDate.length != 10 || body.edDate.length != 10) {
@@ -169,6 +233,18 @@ function checkBody(body) {
   } 
   return body;
 }
+
+/**
+   * 1. 발주현황 입력값 추가 > post통신
+   *  1-1. 입력받은 데이터 체크 > 해당 값으로 검색
+   * 2. 페이징 확인 힘듬 > while문으로 데이터 수집
+   *  2-1. 각 td 마다 전부 '발주서 인쇄' 통신으로 추가 데이터 수집 필요
+   *  2-2. 수집 하다가 마지막 td가 '확인' 일 경우 반복 중지
+   *  2-3. 다음 페이지 table이 없을경우 반복 중지
+   * 3. 가져온 데이터 파싱
+   * 3-1. 입력값에 따라 다른 값 파싱 필요
+   * 4. 엑셀파일 생성
+   */
 
 // 메인 함수: url에 대해 GET 요청과 POST 요청을 보내고, 그 결과를 파싱하고, 엑셀 파일로 저장합니다.
 (async function main() {
@@ -183,10 +259,8 @@ function checkBody(body) {
   body = checkBody(body);
   
   if (!body){
-    rl.question("잘못된 값이 입력되어 프로그램이 종료됩니다. 아무키나 누르세요.", () => {
-      rl.close();
-      process.exit();
-    });
+    await promptInput("잘못된 값이 입력되어 프로그램이 종료됩니다. 아무키나 누르세요.");
+    process.exit();
   }
 
   resultData = await httpConnect('MAINPAGE', 'GET', baseURL,'');
@@ -251,19 +325,20 @@ function checkBody(body) {
     let trCnt = 0;
     while(true) {
       let trData = resultData.grap(`<tr class='ConteTR' style="height:32px;">`, '</tr>', trCnt);
-      
       if(trCnt == 0 && (trData == "" || !trData)){
         isPagingEnd = true;
         break;
       } 
-
-      let chkIsOk = trData.grap("<td class='ConteTD_End_C'>", '</td>').removeHtmlTagAll().trim();
-      if (chkIsOk == "확인") {
+      
+      let chkIsOk = trData.grap("<td class='ConteTD_End_C'>", '</td>').trim();
+      if (chkIsOk.indexOf("확인") > -1) {
         isPagingEnd = true;
         break;
-      }
+      } else if (!chkIsOk) break;
 
-      let dataCd = trData.grap("<td class='ConteTD_C'>", '</td>', 1);
+      let dataCd = {};
+      dataCd.contCd = trData.grap("<td class='ConteTD_C'>", '</td>', 1);
+      dataCd.price = trData.grap("<td class='ConteTD_R'>", '</td>');
       codeArr.push(dataCd);
       trCnt++;
     }
@@ -273,12 +348,12 @@ function checkBody(body) {
   }
 
   for (let cnt = 0; cnt < codeArr.length; cnt++) {
-    let itemCd = codeArr[cnt];
+    let itemCon = codeArr[cnt];
     let postOrderBody = "";
     postOrderBody += "button_flag="
     postOrderBody += "&sort=CP_PlacingDateTime"
     postOrderBody += "&pages=1";
-    postOrderBody += "&ContractPlacing_Code=" + itemCd
+    postOrderBody += "&ContractPlacing_Code=" + itemCon.contCd
     postOrderBody += "&OrderType=O"
     postOrderBody += "&dateFrmName="
     postOrderBody += "&idxno="
@@ -299,29 +374,22 @@ function checkBody(body) {
     parsingArr.push(resultData.replaceEntities());
   }
 
-  /**
-   * 1. 발주현황 입력값 추가 > post통신
-   *  1-1. 입력받은 데이터 체크 > 해당 값으로 검색
-   * 2. 페이징 확인 힘듬 > while문으로 데이터 수집
-   *  2-1. 각 td 마다 전부 '발주서 인쇄' 통신으로 추가 데이터 수집 필요
-   *  2-2. 수집 하다가 마지막 td가 '확인' 일 경우 반복 중지
-   *  2-3. 다음 페이지 table이 없을경우 반복 중지
-   * -- OK
-   * 3. 가져온 데이터 파싱
-   * 3-1. 입력값에 따라 다른 값 파싱 필요
-   * 4. 엑셀파일 생성
-   */
+  if(codeArr.length == parsingArr.length) {
 
-  // if(data2) {
-  //   const parsedData2 = parseData(data2);
-  //   saveToExcel(parsedData2, 'output2.xlsx');
-  // }
-
-  // const data3 = await fetchDataGET(url3, customHeaders);
-  // if(data3) {
-  //   const parsedData3 = parseData(data3);
-  //   saveToExcel(parsedData3, 'output3.xlsx');
-  // }
+    if(codeArr.length == 0) {
+      console.log('확인하지 않은 발주 데이터가 없습니다.')
+    } else {
+      const parsedData = parseData(codeArr, parsingArr);
+      if(body.srcType == "RMON") {
+        saveToExcel(parsedData, `촬영용 : ${body.stDate} ~ ${body.edDate}.xlsx`, body.srcType);
+      } else {
+        saveToExcel(parsedData, `예식일 : ${body.stDate} ~ ${body.edDate}.xlsx`, body.srcType);
+      }
+    }
+  } else {
+    tempData.message = '몬가 잘못댔음...';
+    errorCatch(tempData);
+  }
 
   rl.question("키를 입력하면 프로그램이 종료됩니다.", () => {
     rl.close();
