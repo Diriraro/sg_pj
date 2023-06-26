@@ -106,6 +106,7 @@ async function httpConnect(actionId, method, url, bodyText, retryCount = 0) {
 
 // HTML 문자열을 파싱해 원하는 데이터를 추출하는 함수입니다. 원하는 데이터의 형태에 따라 이 함수를 수정해야 합니다.
 function parseData(codeArr, htmlArr, srcType) {
+  console.log('parseData Start');
   const dataCnt = codeArr.length;
   const parsedData = [];
   if (srcType == "RMON") {
@@ -160,40 +161,48 @@ function parseData(codeArr, htmlArr, srcType) {
       parsedData.push(resultJson);
     }
   }
-
+  console.log('parseData OK');
   return parsedData;
 }
 
 // 데이터를 엑셀 파일로 저장하는 함수입니다.
 function saveToExcel(data, fileName, srcType) {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(data);
-  if(srcType == "RMON") {
-    ws['!cols'] = [
-      { wch: 15 },
-      { wch: 5 }, 
-      { wch: 10 }, 
-      { wch: 10 }, 
-      { wch: 25 }, 
-      { wch: 45 }, 
-      { wch: 50 }, 
-      { wch: 20 }, 
-      { wch: 10 }, 
-    ];
-  } else {
-    ws['!cols'] = [
-      { wch: 15 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 25 },
-      { wch: 45 },
-      { wch: 50 },
-      { wch: 15 },
-      { wch: 5 },
-    ];
+  console.log('Excel Start')
+  try {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data);
+    if(srcType == "RMON") {
+      ws['!cols'] = [
+        { wch: 15 },
+        { wch: 5 }, 
+        { wch: 10 }, 
+        { wch: 10 }, 
+        { wch: 25 }, 
+        { wch: 45 }, 
+        { wch: 45 }, 
+        { wch: 20 }, 
+        { wch: 10 }, 
+      ];
+    } else {
+      ws['!cols'] = [
+        { wch: 15 },
+        { wch: 10 },
+        { wch: 10 },
+        { wch: 25 },
+        { wch: 45 },
+        { wch: 45 },
+        { wch: 15 },
+        { wch: 5 },
+      ];
+    }
+    XLSX.utils.book_append_sheet(wb, ws, "Sheet 1");
+    XLSX.writeFile(wb, fileName);
+  } catch (error) {
+    console.log(error.message);
+    waitForExit();
   }
-  XLSX.utils.book_append_sheet(wb, ws, "Sheet 1");
-  XLSX.writeFile(wb, fileName);
+  
+  console.log('EXCEL OK');
 }
 
 function logOut(){
@@ -205,8 +214,10 @@ async function errorCatch(err){
   console.log('=======================================')
   console.log(err.message)
   console.log('=======================================')
+
+  waitForExit();
   
-  await promptInput("에러발생. 프로그램이 종료됩니다. 아무키나 누르세요.");
+  let isEnd = await promptInput("에러발생. 프로그램이 종료됩니다. 아무키나 누르세요.");
   process.exit();
 }
 
@@ -234,6 +245,16 @@ function checkBody(body) {
   return body;
 }
 
+function waitForExit() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  rl.question('프로그램이 완료되었습니다. 종료하려면 엔터 키를 누르십시오...\n', () => {
+    rl.close();
+  });
+}
+
 /**
    * 1. 발주현황 입력값 추가 > post통신
    *  1-1. 입력받은 데이터 체크 > 해당 값으로 검색
@@ -259,7 +280,8 @@ function checkBody(body) {
   body = checkBody(body);
   
   if (!body){
-    await promptInput("잘못된 값이 입력되어 프로그램이 종료됩니다. 아무키나 누르세요.");
+    let isEnd = await promptInput("잘못된 값이 입력되어 프로그램이 종료됩니다. 아무키나 누르세요.");
+    waitForExit();
     process.exit();
   }
 
@@ -379,11 +401,11 @@ function checkBody(body) {
     if(codeArr.length == 0) {
       console.log('확인하지 않은 발주 데이터가 없습니다.')
     } else {
-      const parsedData = parseData(codeArr, parsingArr);
+      const parsedData = parseData(codeArr, parsingArr, body.srcType);
       if(body.srcType == "RMON") {
-        saveToExcel(parsedData, `촬영용 : ${body.stDate} ~ ${body.edDate}.xlsx`, body.srcType);
+        saveToExcel(parsedData, `촬영용_${body.stDate}_to_${body.edDate}.xlsx`, body.srcType);
       } else {
-        saveToExcel(parsedData, `예식일 : ${body.stDate} ~ ${body.edDate}.xlsx`, body.srcType);
+        saveToExcel(parsedData, `예식일_${body.stDate}_to_${body.edDate}.xlsx`, body.srcType);
       }
     }
   } else {
@@ -391,7 +413,6 @@ function checkBody(body) {
     errorCatch(tempData);
   }
 
-  rl.question("키를 입력하면 프로그램이 종료됩니다.", () => {
-    rl.close();
-  });
+  console.log('everyThings OK');
+  waitForExit();
 })();
