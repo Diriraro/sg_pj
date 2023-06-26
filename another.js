@@ -114,23 +114,40 @@ function parseData(codeArr, htmlArr, srcType) {
       let htmlItem = htmlArr[cnt];
       let codeItem = codeArr[cnt];
       let resultJson = {};
-  
+
       resultJson["발주코드"] = codeItem.contCd;
   
       const $ = cheerio.load(htmlItem);
+
+      let itemName = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(2) > td:nth-child(3)').text().replace('수임료차감포함', '');
+      if (itemName.indexOf('촬영') == -1) continue;
+
       const tempDate = $('body > div:nth-child(1) > table:nth-child(3) > tbody > tr:nth-child(2) > td.tdLine').text().split(' ');
       const ckDate = new Date(tempDate[0]);
-      resultJson["날짜"] = ('0' + (ckDate.getMonth() + 1)).slice(-2) + "-" + ('0' + ckDate.getDate()).slice(-2);
+      const ckDay = getDayOfWeek(tempDate[0]);
+      resultJson["날짜"] = ('0' + (ckDate.getMonth() + 1)).slice(-2) + "/" + ('0' + ckDate.getDate()).slice(-2) + "(" + ckDay + ")";
       resultJson["담당플래너"] = $('body > div:nth-child(1) > table:nth-child(2) > tbody > tr:nth-child(1) > td.tdEndLine').text().split('/')[0].trim();
       resultJson["신부명"] = $('body > div:nth-child(1) > table:nth-child(2) > tbody > tr:nth-child(2) > td:nth-child(2)').text();
   
-      resultJson["배송지"] = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(2)').text();
-      const isTotal = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(3)').text();
-      if (isTotal.indexOf('토탈') == -1) {
-        resultJson["배송지"] += "(확인필요)";
+      let totalCnt = 0;
+
+      for (let i = 2; i <= 9; i++) {
+        const findTotal = $(`body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(${i}) > td:nth-child(3)`).text();
+        if (findTotal.indexOf('토탈') != -1) {
+          totalCnt = i;
+          break;
+        }
       }
-      
-      resultJson["발주부케"] = "[촬영] " + codeItem.price + "원 - " + $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(2) > td:nth-child(3)').text();
+      // const isTotal = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(3)').text();
+      if (totalCnt == 0) {
+        resultJson["배송지"] = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(2)').text();
+        resultJson["배송지"] += "(확인필요)";
+      } else {
+        resultJson["배송지"] = $(`body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(${totalCnt}) > td:nth-child(2)`).text();
+      }
+
+      resultJson["배송시간"] = "";
+      resultJson["발주부케"] = itemName + " - " + codeItem.price + "원";
       resultJson["특이사항(기타사항)"] = $('body > div:nth-child(1) > table:nth-child(5) > tbody > tr > td').text().trim();
       resultJson["리허설장소"] = $('body > div:nth-child(1) > table:nth-child(3) > tbody > tr:nth-child(1) > td.tdLine').text();
       resultJson["리허설시간"] = tempDate[1];
@@ -149,11 +166,15 @@ function parseData(codeArr, htmlArr, srcType) {
       resultJson["담당플래너"] = $('body > div:nth-child(1) > table:nth-child(2) > tbody > tr:nth-child(1) > td.tdEndLine').text().split('/')[0].trim();
       resultJson["신부명"] = $('body > div:nth-child(1) > table:nth-child(2) > tbody > tr:nth-child(2) > td:nth-child(2)').text();
       resultJson["배송지"] = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(2)').text();
+
       const isTotal = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(3) > td:nth-child(3)').text();
       if (isTotal.indexOf('토탈') == -1) {
         resultJson["배송지"] += "(확인필요)";
       }
-      resultJson["발주부케"] = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(2) > td:nth-child(3)').text() + " - " + codeItem.price + "원";
+
+      resultJson["배송시간"] = "";
+      resultJson["발주부케"] = $('body > div:nth-child(1) > table:nth-child(4) > tbody > tr:nth-child(2) > td:nth-child(3)').text().replace('수임료차감포함', '') + " - " + codeItem.price + "원";
+      resultJson["부토니에"] = "";
       resultJson["특이사항(기타사항)"] = $('body > div:nth-child(1) > table:nth-child(5) > tbody > tr > td').text().trim();
       resultJson["예식장소"] = $('body > div:nth-child(1) > table:nth-child(3) > tbody > tr:nth-child(1) > td.tdEndLine').text().trim();
       resultJson["예식시간"] = $('body > div:nth-child(1) > table:nth-child(3) > tbody > tr:nth-child(2) > td.tdEndLine').text().split(' ')[1].trim();
@@ -161,8 +182,20 @@ function parseData(codeArr, htmlArr, srcType) {
       parsedData.push(resultJson);
     }
   }
+
+  if (parsedData.length == 0) {
+    console.log('확인하지 않은 발주 데이터가 없습니다.');
+    return false;
+  }
   console.log('parseData OK');
   return parsedData;
+}
+
+function getDayOfWeek(dateString) {
+  const date = new Date(dateString);
+  const days =['일', '월', '화', '수', '목', '금', '토'];
+
+  return days[date.getDay()];
 }
 
 // 데이터를 엑셀 파일로 저장하는 함수입니다.
@@ -174,12 +207,13 @@ function saveToExcel(data, fileName, srcType) {
     if(srcType == "RMON") {
       ws['!cols'] = [
         { wch: 15 },
-        { wch: 5 }, 
+        { wch: 10 }, 
         { wch: 10 }, 
         { wch: 10 }, 
         { wch: 25 }, 
-        { wch: 45 }, 
-        { wch: 45 }, 
+        { wch: 10 }, 
+        { wch: 35 }, 
+        { wch: 55 }, 
         { wch: 20 }, 
         { wch: 10 }, 
       ];
@@ -188,11 +222,13 @@ function saveToExcel(data, fileName, srcType) {
         { wch: 15 },
         { wch: 10 },
         { wch: 10 },
+        { wch: 10 },
         { wch: 25 },
-        { wch: 45 },
-        { wch: 45 },
+        { wch: 10 },
+        { wch: 35 },
+        { wch: 55 },
         { wch: 15 },
-        { wch: 5 },
+        { wch: 10 },
       ];
     }
     XLSX.utils.book_append_sheet(wb, ws, "Sheet 1");
@@ -358,6 +394,14 @@ function waitForExit() {
         break;
       } else if (!chkIsOk) break;
 
+      if (body.srcType == "RMON") {
+        let isFilm = trData.grap("<td class='ConteTD_L'>", '</td>').removeHtmlTagAll().trim();
+        if (isFilm.indexOf('촬영') == -1) {
+          trCnt++;
+          continue;
+        } 
+      }
+
       let dataCd = {};
       dataCd.contCd = trData.grap("<td class='ConteTD_C'>", '</td>', 1);
       dataCd.price = trData.grap("<td class='ConteTD_R'>", '</td>');
@@ -399,20 +443,22 @@ function waitForExit() {
   if(codeArr.length == parsingArr.length) {
 
     if(codeArr.length == 0) {
-      console.log('확인하지 않은 발주 데이터가 없습니다.')
+      console.log('확인하지 않은 발주 데이터가 없습니다.');
     } else {
       const parsedData = parseData(codeArr, parsingArr, body.srcType);
-      if(body.srcType == "RMON") {
-        saveToExcel(parsedData, `촬영용_${body.stDate}_to_${body.edDate}.xlsx`, body.srcType);
-      } else {
-        saveToExcel(parsedData, `예식일_${body.stDate}_to_${body.edDate}.xlsx`, body.srcType);
-      }
+      if (parsedData != false) {
+        if(body.srcType == "RMON") {
+          saveToExcel(parsedData, `촬영용_${body.stDate}_to_${body.edDate}.xlsx`, body.srcType);
+        } else {
+          saveToExcel(parsedData, `예식일_${body.stDate}_to_${body.edDate}.xlsx`, body.srcType);
+        }
+      } 
     }
   } else {
     tempData.message = '몬가 잘못댔음...';
     errorCatch(tempData);
   }
 
-  console.log('everyThings OK');
+  console.log('everyThing is OK');
   waitForExit();
 })();
